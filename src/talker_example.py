@@ -39,11 +39,21 @@
 import rospy
 from std_msgs.msg import String
 
+class cool_thing:
+    def __init__(self, a, b):
+        self.a = a
+        self.b = b
+        print(a, b)
+    def show(self):
+        print(self.a + self.b)
+
 def talker():
     pub = rospy.Publisher('chatter', String, queue_size=10)
     rospy.init_node('talker', anonymous=True)
     rate = rospy.Rate(10) # 10hz
+    thing = cool_thing(2, 5)
     while not rospy.is_shutdown():
+        thing.show()
         hello_str = "hello! world! %s" % rospy.get_time()
         rospy.loginfo(hello_str)
         pub.publish(hello_str)
