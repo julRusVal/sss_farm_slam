@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
-# By Julian Valdez
-# Inspiration from https://github.com/smarc-project/smarc_perception/blob/noetic-devel/sss_object_detection/scripts/sss_detection_listener.py
 
+# ROS imports
 import rospy
-
 import tf2_ros
 import tf2_geometry_msgs
-from tf.transformations import euler_from_quaternion
 from nav_msgs.msg import Odometry
 from vision_msgs.msg import Detection2DArray
 from visualization_msgs.msg import MarkerArray
+# from tf.transformations import euler_from_quaternion
 
-import gtsam
+# General imports
 import csv
+
+"""
+import gtsam
+"""
 
 
 # Functions
@@ -32,6 +34,8 @@ class sam_slam_listener:
         self.det_topic = det_top_name
         self.buoy_topic = buoy_top_name
         self.frame = frame_name
+
+        self.gt_frame_id = 'gt/sam/base_link'
 
         # tf stuff
         self.tf_buffer = tf2_ros.Buffer()
@@ -58,6 +62,9 @@ class sam_slam_listener:
         self.gt_poses_graph = []
         self.dr_poses_graph = []
         self.detections_graph = []
+
+        # TODO the initial gt might not have been the correct way
+        self.gt_test_graph = []
 
         # File paths for logging
         self.dr_poses_file_path = 'dr_poses.csv'
@@ -111,6 +118,7 @@ class sam_slam_listener:
         """
         transformed_pose = self.transform_pose(msg.pose, from_frame=msg.header.frame_id, to_frame=self.frame)
         self.gt_pose = transformed_pose
+
         gt_position = transformed_pose.pose.position
         gt_quaternion = transformed_pose.pose.orientation
         self.gt_poses.append([gt_position.x, gt_position.y, gt_position.z,
@@ -125,32 +133,45 @@ class sam_slam_listener:
         Note the position of q_w, this is for compatibility with gtsam and matlab
         """
         # transform odom to the map frame
-        transformed_pose = self.transform_pose(msg.pose, from_frame=msg.header.frame_id, to_frame=self.frame)
-        self.dr_pose = transformed_pose
+        transformed_dr_pose = self.transform_pose(msg.pose,
+                                               from_frame=msg.header.frame_id,
+                                               to_frame=self.frame)
+        self.dr_pose = transformed_dr_pose
 
-        dr_position = transformed_pose.pose.position
-        dr_quaternion = transformed_pose.pose.orientation
+        dr_position = transformed_dr_pose.pose.position
+        dr_quaternion = transformed_dr_pose.pose.orientation
         self.dr_poses.append([dr_position.x, dr_position.y, dr_position.z,
                               dr_quaternion.w, dr_quaternion.x, dr_quaternion.y, dr_quaternion.z])
 
         time_now = rospy.Time.now()
 
+        # Get the actual ground truth
+        gt_trans = self.get_gt_trans_in_map()
+
+        # print(test_pose.pose.position.x)
+
         # If this is the first dr update and gt has already been updated
+        # TODO this conditional could use some cleaning up
         if not self.dr_updated and self.gt_updated:
             # Add to the dr list
             self.dr_poses_graph.append(self.dr_poses[-1])
             # Add to the gt list, with the most recent gt_pose
             # These lists should always remain the same length
             self.gt_poses_graph.append(self.gt_poses[-1])
+            # TODO testing the new ground truth
+            self.gt_test_graph.append(self.get_gt_trans_in_map())
             # Update time and state
             self.last_time = time_now
             self.dr_updated = True
+
         elif self.dr_updated and (time_now - self.last_time).to_sec() > self.update_time:
             # Add to the dr list
             self.dr_poses_graph.append(self.dr_poses[-1])
             # Add to the gt list, with the most recent gt_pose
             # These lists should always remain the same length
             self.gt_poses_graph.append(self.gt_poses[-1])
+            # TODO testing the new ground truth
+            self.gt_test_graph.append(self.get_gt_trans_in_map())
             # Update time and state
             self.last_time = time_now
             self.dr_updated = True
@@ -167,26 +188,30 @@ class sam_slam_listener:
                                                        to_frame=self.frame)
                 # Extract the position
                 det_position = transformed_pose.pose.position
+                det_quaternion = transformed_pose.pose.orientation
                 # Perform raw logging of detections
                 # Append [x,y,z,id,score]
-                self.detections.append([det_position.x,
-                                        det_position.y,
-                                        det_position.z,
+                self.detections.append([det_position.x, det_position.y, det_position.z,
+                                        det_quaternion.w, det_quaternion.x, det_quaternion.y, det_quaternion.z,
                                         result.id,
                                         result.score])
 
                 # Log data for the graph
-                # Append [x,y,z,id,score, index of ]
+                # Append [x_map,y_map,z_map, x_rel, y_rel, z_vel, id,score, index of ]
                 # First update dr and gr with the most current
                 self.dr_poses_graph.append(self.dr_poses[-1])
                 self.gt_poses_graph.append(self.gt_poses[-1])
+                # TODO testing the new ground truth
+                self.gt_test_graph.append(self.get_gt_trans_in_map())
 
+                # det_postion:
                 index = len(self.dr_poses_graph) - 1
                 self.detections_graph.append([det_position.x,
                                               det_position.y,
                                               det_position.z,
-                                              result.id,
-                                              result.score,
+                                              detection_position.pose.position.x,
+                                              detection_position.pose.position.y,
+                                              detection_position.pose.position.z,
                                               index])
 
     def buoy_callback(self, msg):
@@ -221,14 +246,34 @@ class sam_slam_listener:
         trans = None
         while trans is None:
             try:
-                trans = self.tf_buffer.lookup_transform(
-                    to_frame, from_frame, rospy.Time())
+                trans = self.tf_buffer.lookup_transform(to_frame,
+                                                        from_frame,
+                                                        rospy.Time(),
+                                                        rospy.Duration(1.0))
             except (tf2_ros.LookupException, tf2_ros.ConnectivityException,
                     tf2_ros.ExtrapolationException) as error:
                 print('Failed to transform. Error: {}'.format(error))
         return trans
 
-    # random utility methods
+    def get_gt_trans_in_map(self):
+        """
+        Returns [ x, y, z, q_w, q_x, q_y, q_z]
+        """
+
+        trans = self.wait_for_transform(from_frame=self.gt_frame_id,
+                                        to_frame=self.frame)
+
+        trans_list = [trans.transform.translation.x,
+                      trans.transform.translation.y,
+                      trans.transform.translation.z,
+                      trans.transform.rotation.w,
+                      trans.transform.rotation.x,
+                      trans.transform.rotation.y,
+                      trans.transform.rotation.z]
+
+        return trans_list
+
+    # Random utility methods
     def write_data(self):
         # Save dead reckoning
         write_data_set(self.dr_poses_file_path, self.dr_poses)
@@ -236,7 +281,9 @@ class sam_slam_listener:
 
         # Save ground truth
         write_data_set(self.gt_poses_file_path, self.gt_poses)
+        # TODO testing the new gt method
         write_data_set(self.gt_poses_graph_file_path, self.gt_poses_graph)
+        # write_data_set(self.gt_poses_graph_file_path, self.gt_test_graph)
 
         # Save detections
         write_data_set(self.detections_file_path, self.detections)
@@ -251,7 +298,8 @@ def main():
     rospy.Rate(5)
 
     ground_truth_topic = '/sam/sim/odom'
-    dead_reckon_topic = '/sam/dr/global/odom/filtered'
+    # dead_reckon_topic = '/sam/dr/global/odom/filtered'
+    dead_reckon_topic = '/sam/dr/odom'
     detection_topic = '/sam/payload/sidescan/detection_hypothesis'
     buoy_topic = '/sam/sim/marked_positions'
     frame = 'map'
