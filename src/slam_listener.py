@@ -7,6 +7,7 @@ import tf2_geometry_msgs
 from nav_msgs.msg import Odometry
 from vision_msgs.msg import Detection2DArray
 from visualization_msgs.msg import MarkerArray
+from geometry_msgs.msg import PoseStamped
 # from tf.transformations import euler_from_quaternion
 
 # General imports
@@ -26,15 +27,29 @@ def write_data_set(file_path, data_array):
 
 
 class sam_slam_listener:
+    """
+    This class defines the behavior of the slam_listener node
+    Dead reckoning (dr) and ground truth data is saved [x, y, z, q_w, q_x, q_y, q_z] in the map frame
+    Note I about the gt data, there are two potential sources of gt data
+    - the topic: /sam/sim/odom
+    - the frame attached to the simulation: gt/sam/base_link (currently used)
+    Note II about the gt data, I have tried to transform all the poses to the map frame but even after this I need to
+    invert the sign of the x-axis and corrected_heading = pi - original_heading
+
+    Detections are saved in two lists. {There is no need for both}
+    detections format: [x_map, y_map, z_map, q_w, q_x, q_y, q_z, corresponding dr id, score]
+    detections_graph format: [x_map, y_map, z_map, x_rel, y_rel, z_vel, corresponding dr id]
+
+    """
     def __init__(self, gt_top_name, dr_top_name, det_top_name, buoy_top_name, frame_name):
-        print('Start: sam_slam_listener class')
-        # Topics and stuff
+        # Topic names
         self.gt_topic = gt_top_name
         self.dr_topic = dr_top_name
         self.det_topic = det_top_name
         self.buoy_topic = buoy_top_name
-        self.frame = frame_name
 
+        # Frame names: For the most part everything is transformed to the map frame
+        self.frame = frame_name
         self.gt_frame_id = 'gt/sam/base_link'
 
         # tf stuff
@@ -62,9 +77,6 @@ class sam_slam_listener:
         self.gt_poses_graph = []
         self.dr_poses_graph = []
         self.detections_graph = []
-
-        # TODO the initial gt might not have been the correct way
-        self.gt_test_graph = []
 
         # File paths for logging
         self.dr_poses_file_path = 'dr_poses.csv'
@@ -143,35 +155,17 @@ class sam_slam_listener:
         self.dr_poses.append([dr_position.x, dr_position.y, dr_position.z,
                               dr_quaternion.w, dr_quaternion.x, dr_quaternion.y, dr_quaternion.z])
 
+        # Conditions for updating dr: (1) first time or (2) stale data
         time_now = rospy.Time.now()
+        first_time_cond = not self.dr_updated and self.gt_updated
+        stale_data_cond = self.dr_updated and (time_now - self.last_time).to_sec() > self.update_time
 
-        # Get the actual ground truth
-        gt_trans = self.get_gt_trans_in_map()
-
-        # print(test_pose.pose.position.x)
-
-        # If this is the first dr update and gt has already been updated
-        # TODO this conditional could use some cleaning up
-        if not self.dr_updated and self.gt_updated:
-            # Add to the dr list
+        if first_time_cond or stale_data_cond:
+            # Add to the dr and gt lists
             self.dr_poses_graph.append(self.dr_poses[-1])
-            # Add to the gt list, with the most recent gt_pose
-            # These lists should always remain the same length
-            self.gt_poses_graph.append(self.gt_poses[-1])
-            # TODO testing the new ground truth
-            self.gt_test_graph.append(self.get_gt_trans_in_map())
-            # Update time and state
-            self.last_time = time_now
-            self.dr_updated = True
+            self.gt_poses_graph.append(self.get_gt_trans_in_map())
+            # (OLD) self.gt_poses_graph.append(self.gt_poses[-1])
 
-        elif self.dr_updated and (time_now - self.last_time).to_sec() > self.update_time:
-            # Add to the dr list
-            self.dr_poses_graph.append(self.dr_poses[-1])
-            # Add to the gt list, with the most recent gt_pose
-            # These lists should always remain the same length
-            self.gt_poses_graph.append(self.gt_poses[-1])
-            # TODO testing the new ground truth
-            self.gt_test_graph.append(self.get_gt_trans_in_map())
             # Update time and state
             self.last_time = time_now
             self.dr_updated = True
@@ -196,15 +190,14 @@ class sam_slam_listener:
                                         result.id,
                                         result.score])
 
-                # Log data for the graph
-                # Append [x_map,y_map,z_map, x_rel, y_rel, z_vel, id,score, index of ]
+                # ===== Log data for the graph =====
                 # First update dr and gr with the most current
                 self.dr_poses_graph.append(self.dr_poses[-1])
-                self.gt_poses_graph.append(self.gt_poses[-1])
-                # TODO testing the new ground truth
-                self.gt_test_graph.append(self.get_gt_trans_in_map())
+                self.gt_poses_graph.append(self.get_gt_trans_in_map())
+                # (OLD) self.gt_poses_graph.append(self.gt_poses[-1])
 
-                # det_postion:
+                # detection position:
+                # Append [x_map,y_map,z_map, x_rel, y_rel, z_vel, id,score, index of ]
                 index = len(self.dr_poses_graph) - 1
                 self.detections_graph.append([det_position.x,
                                               det_position.y,
@@ -259,10 +252,10 @@ class sam_slam_listener:
         """
         Returns [ x, y, z, q_w, q_x, q_y, q_z]
         """
+        # TODO only need to return one of these
 
         trans = self.wait_for_transform(from_frame=self.gt_frame_id,
                                         to_frame=self.frame)
-
         trans_list = [trans.transform.translation.x,
                       trans.transform.translation.y,
                       trans.transform.translation.z,
@@ -271,7 +264,19 @@ class sam_slam_listener:
                       trans.transform.rotation.y,
                       trans.transform.rotation.z]
 
-        return trans_list
+        null_pose = PoseStamped()
+        null_pose.pose.orientation.w = 1.0
+        pose_in_map = tf2_geometry_msgs.do_transform_pose(null_pose, trans)
+
+        pose_list = [pose_in_map.pose.position.x,
+                     pose_in_map.pose.position.y,
+                     pose_in_map.pose.position.z,
+                     pose_in_map.pose.orientation.w,
+                     pose_in_map.pose.orientation.x,
+                     pose_in_map.pose.orientation.y,
+                     pose_in_map.pose.orientation.z]
+
+        return pose_list
 
     # Random utility methods
     def write_data(self):
@@ -281,9 +286,8 @@ class sam_slam_listener:
 
         # Save ground truth
         write_data_set(self.gt_poses_file_path, self.gt_poses)
-        # TODO testing the new gt method
         write_data_set(self.gt_poses_graph_file_path, self.gt_poses_graph)
-        # write_data_set(self.gt_poses_graph_file_path, self.gt_test_graph)
+        # (OLD) write_data_set(self.gt_poses_graph_file_path, self.gt_poses_graph)
 
         # Save detections
         write_data_set(self.detections_file_path, self.detections)
