@@ -2,7 +2,7 @@
 
 # Imports
 import rospy
-from sam_slam_utils.sam_slam_classes import sam_slam_listener
+from sam_slam_utils.sam_slam_ros_classes import sam_slam_listener
 
 
 def main():

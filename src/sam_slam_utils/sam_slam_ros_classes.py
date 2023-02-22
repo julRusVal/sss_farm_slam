@@ -220,7 +220,7 @@ class sam_slam_listener:
                 trans = self.tf_buffer.lookup_transform(to_frame,
                                                         from_frame,
                                                         rospy.Time(),
-                                                        rospy.Duration(1.0))
+                                                        rospy.Duration(1))
             except (tf2_ros.LookupException, tf2_ros.ConnectivityException,
                     tf2_ros.ExtrapolationException) as error:
                 print('Failed to transform. Error: {}'.format(error))
