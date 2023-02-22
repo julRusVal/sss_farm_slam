@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-# ROS imports
 import rospy
 import tf2_ros
 import tf2_geometry_msgs
@@ -8,22 +7,7 @@ from nav_msgs.msg import Odometry
 from vision_msgs.msg import Detection2DArray
 from visualization_msgs.msg import MarkerArray
 from geometry_msgs.msg import PoseStamped
-# from tf.transformations import euler_from_quaternion
-
-# General imports
 import csv
-
-"""
-import gtsam
-"""
-
-
-# Functions
-def write_data_set(file_path, data_array):
-    with open(file_path, "w", newline="") as f:
-        writer = csv.writer(f)
-        for row in data_array:
-            writer.writerow(row)
 
 
 class sam_slam_listener:
@@ -41,6 +25,7 @@ class sam_slam_listener:
     detections_graph format: [x_map, y_map, z_map, x_rel, y_rel, z_vel, corresponding dr id]
 
     """
+
     def __init__(self, gt_top_name, dr_top_name, det_top_name, buoy_top_name, frame_name):
         # Topic names
         self.gt_topic = gt_top_name
@@ -146,8 +131,8 @@ class sam_slam_listener:
         """
         # transform odom to the map frame
         transformed_dr_pose = self.transform_pose(msg.pose,
-                                               from_frame=msg.header.frame_id,
-                                               to_frame=self.frame)
+                                                  from_frame=msg.header.frame_id,
+                                                  to_frame=self.frame)
         self.dr_pose = transformed_dr_pose
 
         dr_position = transformed_dr_pose.pose.position
@@ -256,13 +241,6 @@ class sam_slam_listener:
 
         trans = self.wait_for_transform(from_frame=self.gt_frame_id,
                                         to_frame=self.frame)
-        trans_list = [trans.transform.translation.x,
-                      trans.transform.translation.y,
-                      trans.transform.translation.z,
-                      trans.transform.rotation.w,
-                      trans.transform.rotation.x,
-                      trans.transform.rotation.y,
-                      trans.transform.rotation.z]
 
         null_pose = PoseStamped()
         null_pose.pose.orientation.w = 1.0
@@ -279,41 +257,26 @@ class sam_slam_listener:
         return pose_list
 
     # Random utility methods
+    @staticmethod
+    def write_data_set(file_path, data_array):
+        with open(file_path, "w", newline="") as f:
+            writer = csv.writer(f)
+            for row in data_array:
+                writer.writerow(row)
+
     def write_data(self):
         # Save dead reckoning
-        write_data_set(self.dr_poses_file_path, self.dr_poses)
-        write_data_set(self.dr_poses_graph_file_path, self.dr_poses_graph)
+        self.write_data_set(self.dr_poses_file_path, self.dr_poses)
+        self.write_data_set(self.dr_poses_graph_file_path, self.dr_poses_graph)
 
         # Save ground truth
-        write_data_set(self.gt_poses_file_path, self.gt_poses)
-        write_data_set(self.gt_poses_graph_file_path, self.gt_poses_graph)
+        self.write_data_set(self.gt_poses_file_path, self.gt_poses)
+        self.write_data_set(self.gt_poses_graph_file_path, self.gt_poses_graph)
         # (OLD) write_data_set(self.gt_poses_graph_file_path, self.gt_poses_graph)
 
         # Save detections
-        write_data_set(self.detections_file_path, self.detections)
-        write_data_set(self.detections_graph_file_path, self.detections_graph)
+        self.write_data_set(self.detections_file_path, self.detections)
+        self.write_data_set(self.detections_graph_file_path, self.detections_graph)
 
-        write_data_set(self.buoys_file_path, self.buoys)
+        self.write_data_set(self.buoys_file_path, self.buoys)
         return
-
-
-def main():
-    rospy.init_node('slam_listener', anonymous=True)
-    rospy.Rate(5)
-
-    ground_truth_topic = '/sam/sim/odom'
-    # dead_reckon_topic = '/sam/dr/global/odom/filtered'
-    dead_reckon_topic = '/sam/dr/odom'
-    detection_topic = '/sam/payload/sidescan/detection_hypothesis'
-    buoy_topic = '/sam/sim/marked_positions'
-    frame = 'map'
-
-    print('initializing listener')
-    listener = sam_slam_listener(ground_truth_topic, dead_reckon_topic, detection_topic, buoy_topic, frame)
-
-    while not rospy.is_shutdown():
-        rospy.spin()
-
-
-if __name__ == '__main__':
-    main()
