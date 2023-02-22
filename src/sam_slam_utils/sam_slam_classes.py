@@ -82,7 +82,7 @@ class sam_slam_listener:
         self.data_written = False
         self.update_time = 0.5
 
-        # Subscribers
+        # ===== Subscribers =====
         # Ground truth
         self.gt_subscriber = rospy.Subscriber(self.gt_topic,
                                               Odometry,
@@ -167,13 +167,6 @@ class sam_slam_listener:
                                                        to_frame=self.frame)
                 # Extract the position
                 det_position = transformed_pose.pose.position
-                det_quaternion = transformed_pose.pose.orientation
-                # Perform raw logging of detections
-                # Append [x,y,z,id,score]
-                self.detections.append([det_position.x, det_position.y, det_position.z,
-                                        det_quaternion.w, det_quaternion.x, det_quaternion.y, det_quaternion.z,
-                                        result.id,
-                                        result.score])
 
                 # ===== Log data for the graph =====
                 # First update dr and gr with the most current
@@ -235,9 +228,13 @@ class sam_slam_listener:
 
     def get_gt_trans_in_map(self):
         """
+        Finds pose of the ground truth.
+        First,the transform between the map and the ground truth frame.
+        Second, the transform is applied to a null_pose located at the origin.
+        Modifying the orientation of this pose might be need to prevent later
+        processing on the ground truth
         Returns [ x, y, z, q_w, q_x, q_y, q_z]
         """
-        # TODO only need to return one of these
 
         trans = self.wait_for_transform(from_frame=self.gt_frame_id,
                                         to_frame=self.frame)
@@ -272,7 +269,6 @@ class sam_slam_listener:
         # Save ground truth
         self.write_data_set(self.gt_poses_file_path, self.gt_poses)
         self.write_data_set(self.gt_poses_graph_file_path, self.gt_poses_graph)
-        # (OLD) write_data_set(self.gt_poses_graph_file_path, self.gt_poses_graph)
 
         # Save detections
         self.write_data_set(self.detections_file_path, self.detections)
