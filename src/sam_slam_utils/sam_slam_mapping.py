@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """
 This is part of the work towards projecting images onto a planes to make algae farm maps.
-
-this is behind sanesor_data_testing.py
 """
 import os
 import math
@@ -12,66 +10,22 @@ import matplotlib.pyplot as plt
 import cv2
 
 import gtsam
-
-from sam_slam_utils.sam_slam_helpers import read_csv_to_array, read_csv_to_list
 import gtsam.utils.plot as gtsam_plot
+
+from sam_slam_utils.sam_slam_helpers import read_csv_to_array, read_csv_to_list, overwrite_directory
+from sam_slam_utils.sam_slam_helpers import create_Pose3, convert_poses_to_Pose3, apply_transformPoseFrom
+
+from sam_slam_utils.sam_slam_helpers import projectPixelTo3dRay
 
 # 3D Plotting
 from mayavi import mlab
 
 
 # %% Functions
-def create_Pose3(input_pose):
-    """
-    Create a GTSAM Pose3 from the recorded poses in the form:
-    [x,y,z,q_w,q_x,q_,y,q_z]
-    """
-    rot3 = gtsam.Rot3.Quaternion(w=input_pose[3], x=input_pose[4], y=input_pose[5], z=input_pose[6])
-    # rot3_xyz = rot3.xyz()
-    return gtsam.Pose3(rot3, input_pose[0:3])
 
-
-def convert_poses_to_Pose3(poses):
-    """
-    Poses is is of the form: [[x,y,z,q_w,q_x,q_,y,q_z]]
-    """
-    pose3s = []
-    for pose in poses:
-        pose3s.append(create_Pose3(pose))
-
-    return pose3s
-
-
-def apply_transformPoseFrom(pose3s, transform):
-    """
-    pose3s: [gtsam.Pose3]
-    transform: gtsam.Pose3
-
-    Apply the transform given in local coordinates, result is expressed in the world coords
-    """
-    transformed_pose3s = []
-    for pose3 in pose3s:
-        transformed_pose3 = pose3.transformPoseFrom(transform)
-        transformed_pose3s.append(transformed_pose3)
-
-    return transformed_pose3s
-
-
-def projectPixelTo3dRay(u, v, cx, cy, fx, fy):
-    """
-    From ROS-perception
-    https://github.com/ros-perception/vision_opencv/blob/rolling/image_geometry/image_geometry/cameramodels.py
-    Returns the unit vector which passes from the camera center to through rectified pixel (u, v),
-    using the camera :math:`P` matrix.
-    This is the inverse of :math:`project3dToPixel`.
-    """
-    x = (u - cx) / fx
-    y = (v - cy) / fy
-    norm = math.sqrt(x * x + y * y + 1)
-    x /= norm
-    y /= norm
-    z = 1.0 / norm
-    return x, y, z
+# ===== Image registration metric =====
+def ssim_custom(img_0, img_1):
+    print("here is where the magic is!!!")
 
 
 # %% Classes
@@ -289,16 +243,21 @@ class ground_plane:
 
 
 class image_mapping:
-    def __init__(self, gt_base_link_poses, base_link_poses, l_r_camera_info, buoy_info, ropes, rows):
+    def __init__(self, gt_base_link_poses, base_link_poses, l_r_camera_info, buoy_info, ropes, rows, path_name):
+        if os.path.isdir(path_name):
+            self.path_name = path_name
+        else:
+            print('Invalid path name provided')
+
         # ===== true base pose =====
-        self.gt_base_pose = gt_base_link_poses
-        self.gt_base_pose3s = convert_poses_to_Pose3(self.gt_base_pose)
+        self.gt_base_poses = gt_base_link_poses
+        self.gt_base_pose3s = convert_poses_to_Pose3(self.gt_base_poses)
 
         # ===== Base pose =====
-        self.base_pose = base_link_poses
-        self.base_pose3s = convert_poses_to_Pose3(self.base_pose)
+        self.base_poses = base_link_poses
+        self.base_pose3s = convert_poses_to_Pose3(self.base_poses)
 
-        self.pose_ids = self.base_pose[:, -1]
+        self.pose_ids = self.base_poses[:, -1]
 
         # ===== Cameras =====
         self.valid_camera_names = ["left", "right", "down"]  # This is a list of which cameras will be processed
@@ -460,77 +419,7 @@ class image_mapping:
                                                 depth=self.depth,
                                                 spatial_2_pixel=self.spatial_2_pixel))
 
-    def plot_fancy(self, other_name=None):
-        """
-        This might need some work
-        :param other_name:
-        :return:
-        """
-        # Parameters
-        fig_num = 0
-        base_scale = .5
-        other_scale = 1
-        plot_base = [13, 14, 15]  # [8, 10, 11, 12, 13, 14]
-        plot_other = [13, 14, 15]  # [8, 10, 11, 12, 13, 14]
-
-        fig = plt.figure(fig_num)
-        axes = fig.add_subplot(projection='3d')
-
-        axes.set_xlabel("X axis")
-        axes.set_ylabel("Y axis")
-        axes.set_zlabel("Z axis")
-
-        # Plot buoys and vertical 'ropes'
-        for buoy in self.buoys:
-            axes.scatter(buoy[0], buoy[1], buoy[2], c='b', linewidths=5)
-            axes.plot([buoy[0], buoy[0]],
-                      [buoy[1], buoy[1]],
-                      [buoy[2], buoy[2] - 10], c='g')
-
-        # plot base_link gt pose3s
-        for i_base, pose3 in enumerate(self.base_pose3s):
-            # gtsam_plot.plot_pose3_on_axes(axes, pose3, axis_length=base_scale)
-            if i_base in plot_base or len(plot_base) == 0:
-                gtsam_plot.plot_pose3_on_axes(axes, pose3, axis_length=base_scale)
-
-        # plot camera gt pose3s
-        if other_name is not None:
-            other_pose3s = self.cameras_pose3s[other_name]
-            for i_other, pose3 in enumerate(other_pose3s):
-                # gtsam_plot.plot_pose3_on_axes(axes, pose3, axis_length=other_scale)
-                if i_other in plot_other or len(plot_other) == 0:
-                    gtsam_plot.plot_pose3_on_axes(axes, pose3, axis_length=other_scale)
-                    # plot fov
-                    for i_ray, ray in enumerate(self.fov_rays[other_name]):
-                        point_end = pose3.transformFrom(5 * ray)
-                        x_comp = [pose3.x(), point_end[0]]
-                        y_comp = [pose3.y(), point_end[1]]
-                        z_comp = [pose3.z(), point_end[2]]
-                        # Plot (0,0) as magenta
-                        if i_ray == 0:
-                            axes.plot(x_comp, y_comp, z_comp, c='m')
-                        # Plot center line as yellow
-                        elif i_ray == 4:
-                            axes.plot(x_comp, y_comp, z_comp, c='b')
-                        # Other fov lines plotted as black
-                        else:
-                            axes.plot(x_comp, y_comp, z_comp, c='k')
-
-                    # plot intersection
-                    for plane in self.planes:
-                        # Find the center ray in the camera frame and then find the world coord given pose
-                        start, direction = self.camera_center_point_direction(camera_name=other_name, pose=pose3)
-
-                        intrcpt_status, intrcpt_w_coords, _, in_bounds = plane.find_intersection(start,
-                                                                                                 direction)
-
-                        if in_bounds:
-                            axes.scatter(intrcpt_w_coords[0], intrcpt_w_coords[1], intrcpt_w_coords[2], c='r')
-
-        # plt.axis('equal')
-        plt.title("Testing the transform")
-        plt.show()
-
+    # ===== Projective geometry stuff =====
     def find_fov_corner_coords(self, camera_name, plane_id, pose_id):
         """
         Find the intersections of the fov with the defined plane, plane_id = -1 indicates the ground plane
@@ -653,6 +542,7 @@ class image_mapping:
     def find_pixels_of_3d_point(self, camera_name, pose_id, map_point):
         """
 
+        :param camera_name:
         :param pose_id:
         :param map_point: a point2, np.array (3x1) that hold the world coords of a point
         :return:
@@ -759,7 +649,8 @@ class image_mapping:
 
         return start, offset_directions
 
-    def process_images(self, path_name, ignore_first=0, verbose=False):
+    # ===== Processing =====
+    def process_images(self, ignore_first=0, verbose=False):
 
         """
         process_images is used to map the gathered images and warp them on to the planes formed by the buoys.
@@ -773,6 +664,14 @@ class image_mapping:
         :param verbose:
         :return:
         """
+        # Output folder names
+        registered_path_name = self.path_name + 'images_registered/'
+        warped_path_name = self.path_name + 'images_warped/'
+        masked_path_name = self.path_name + 'images_masked/'
+
+        overwrite_directory(registered_path_name)
+        overwrite_directory(warped_path_name)
+        overwrite_directory(masked_path_name)
 
         # Verbose parameters
         vertical_offset = 2.0  # controls where additional registration points are drawn
@@ -787,16 +686,16 @@ class image_mapping:
 
         """
         Loop over poses, at each pose process the data from each camera
-        
+
         """
 
         for current_pose_id in range(start_index, len(self.base_pose3s)):
             # There is a mind melting index error between the poses and the img id :(
-            # current_img_id = int(self.base_pose[current_pose_id][-1])
+            # current_img_id = int(self.base_poses[current_pose_id][-1])
 
-            # check_x = self.gt_base_pose[current_pose_id][0]
-            # check_y = self.gt_base_pose[current_pose_id][1]
-            # check_img_id = int(self.base_pose[current_pose_id][-1])
+            # check_x = self.gt_base_poses[current_pose_id][0]
+            # check_y = self.gt_base_poses[current_pose_id][1]
+            # check_img_id = int(self.base_poses[current_pose_id][-1])
             # print(f"{current_pose_id}: {check_x} - {check_y} - {check_img_id}")
 
             for camera_name in self.valid_camera_names:
@@ -832,13 +731,13 @@ class image_mapping:
                             else:
                                 frame_offset = 1
                             if current_pose_id + frame_offset < len(self.base_pose3s):
-                                next_img_id = int(self.base_pose[current_pose_id + frame_offset][-1])
+                                next_img_id = int(self.base_poses[current_pose_id + frame_offset][-1])
                             else:
                                 continue
 
                             # mod_id = int(current_img_id + 1)
                             mod_id = next_img_id
-                            img = cv2.imread(path_name + camera_name + f"/{mod_id}.jpg")
+                            img = cv2.imread(self.path_name + camera_name + f"/{mod_id}.jpg")
 
                             if not isinstance(img, np.ndarray):
                                 continue
@@ -889,8 +788,8 @@ class image_mapping:
                                     p_1_y = int(p_1[1] // 1)
                                     img_verbose = cv2.circle(img_verbose, (p_1_x, p_1_y), 5, (0, 255, 0), -1)
 
-                                cv2.imwrite(path_name + "images_registered/Processing_"
-                                            + f"{camera_name}_{current_pose_id}_{mod_id}_{plane_id}.jpg",
+                                cv2.imwrite(registered_path_name +
+                                            f"{camera_name}_{current_pose_id}_{mod_id}_{plane_id}.jpg",
                                             img_verbose)
 
                             # perform extraction
@@ -921,24 +820,22 @@ class image_mapping:
                             self.planes[plane_id].distances.append(distance)
 
                             # Save images and masks
-                            cv2.imwrite(path_name + "images_warped/Warping_"
-                                        + f"{camera_name}_{current_pose_id}_{mod_id}_{plane_id}.jpg",
+                            cv2.imwrite(warped_path_name +
+                                        f"{camera_name}_{current_pose_id}_{mod_id}_{plane_id}.jpg",
                                         img_warped)
 
-                            cv2.imwrite(path_name + "images_masked/Warping_"
-                                        + f"{camera_name}_{current_pose_id}_{mod_id}_{plane_id}.jpg",
+                            cv2.imwrite(masked_path_name +
+                                        f"{camera_name}_{current_pose_id}_{mod_id}_{plane_id}.jpg",
                                         mask_warped)
 
                             # Only associated each image with a plane once
                             break
 
-    def process_ground_plane_images(self, path_name, ignore_first=0, verbose=False):
+    def process_ground_plane_images(self, ignore_first=0, verbose=False):
         """
         process_images is used to map the gathered images and warp them on to the ground plane.
         The 3d poses of the base link and definition of the ground plane are provided.
 
-        :param path_name:
-        :param image_path:
         :param ignore_first:
         :param verbose:
         :return:
@@ -965,22 +862,22 @@ class image_mapping:
 
             # TODO figure why this increment is need, should not be
             # There is a mind melting index error between the poses and the img id :(
-            # current_img_id = int(self.base_pose[current_pose_id][-1])
+            # current_img_id = int(self.base_poses[current_pose_id][-1])
             # looks like the down camera needs a different offset
             if camera_name == "down":
                 frame_offset = 1
             else:
                 frame_offset = 1
             if current_pose_id + frame_offset < len(self.base_pose3s):
-                next_img_id = int(self.base_pose[current_pose_id + frame_offset][-1])
+                next_img_id = int(self.base_poses[current_pose_id + frame_offset][-1])
             else:
                 continue
 
             # ===== Select which image to use =====
-            # current_img_id = int(self.base_pose[current_pose_id][-1])
+            # current_img_id = int(self.base_poses[current_pose_id][-1])
             # used_img_id = current_img_id
             used_img_id = next_img_id
-            img = cv2.imread(path_name + camera_name + f"/{used_img_id}.jpg")
+            img = cv2.imread(self.path_name + camera_name + f"/{used_img_id}.jpg")
 
             if not isinstance(img, np.ndarray):
                 continue
@@ -1028,7 +925,7 @@ class image_mapping:
                         img_verbose = cv2.circle(img_verbose, (center_x, center_y), 5, (255, 0, 255),
                                                  -1)
 
-                    cv2.imwrite(path_name + "images_ground/allignment_"
+                    cv2.imwrite(self.path_name + "images_ground/allignment_"
                                 + f"{camera_name}_{current_pose_id}_{used_img_id}_{plane_id}.jpg",
                                 img_verbose)
 
@@ -1063,15 +960,34 @@ class image_mapping:
                 self.planes[plane_id].distances.append(distance)
 
                 # Save images and masks
-                cv2.imwrite(path_name + "images_ground/img_Warp_"
+                cv2.imwrite(self.path_name + "images_ground/img_Warp_"
                             + f"{camera_name}_{current_pose_id}_{used_img_id}_{plane_id}.jpg",
                             img_warped)
 
-                cv2.imwrite(path_name + "images_ground/mask_warp_"
+                cv2.imwrite(self.path_name + "images_ground/mask_warp_"
                             + f"{camera_name}_{current_pose_id}_{used_img_id}_{plane_id}.jpg",
                             mask_warped)
 
     def simple_stitch_planes_images(self, max_dist=np.inf, verbose=False):
+        """
+        Description:
+        Very simple 'stitching' of multiple images a single into a single image. Stitching is done
+        by distance. The most distant images are applied to the output image in regions with a non-zero mask.
+        This is done from most to least distant. The distance of each image is approximated using the
+        detection vector, so one distance applies to the whole image.
+
+        Improvements:
+        Use the inferred geometry to make a depth map, use this more accurate depth map to perform the stitching.
+        This depth map would still be flat. The improved depth map could be used to correct the images,
+        with sea-thru for example.
+
+        :param max_dist:
+        :param verbose:
+        :return:
+        """
+        # Clear old data and or make folder for the new data
+        planes_path_name = self.path_name + 'rows/'
+        overwrite_directory(planes_path_name)
 
         for plane_id, plane in enumerate(self.planes):
             if len(plane.images) == 0:
@@ -1093,10 +1009,15 @@ class image_mapping:
 
             #
             plane.final_image = final_img
-            cv2.imwrite(path_name + f"planes/final_{plane_id}.jpg",
+            cv2.imwrite(planes_path_name + f"final_{plane_id}.jpg",
                         final_img)
 
     def combine_row_images(self, fill_missing=False):
+
+        # Clear old data and or make folder for the new data
+        rows_path_name = self.path_name + 'rows/'
+        overwrite_directory(rows_path_name)
+
         for row_id, row in enumerate(self.rows):
             plane_width = 0
             plane_widths = []
@@ -1125,8 +1046,113 @@ class image_mapping:
                     current_width_index = next_width_index
 
             # Save
-            cv2.imwrite(path_name + f"rows/row_{row_id}.jpg",
+            cv2.imwrite(rows_path_name + f'row_{row_id}.jpg',
                         row_img)
+
+    # ===== Visualizations =====
+    def plot_fancy(self, other_name=None):
+        """
+        This might need some work
+        :param other_name:
+        :return:
+        """
+        # Parameters
+        fig_num = 0
+        base_scale = .5
+        other_scale = 1
+        plot_base = [13, 14, 15]  # [8, 10, 11, 12, 13, 14]
+        plot_other = [13, 14, 15]  # [8, 10, 11, 12, 13, 14]
+
+        fig = plt.figure(fig_num)
+        axes = fig.add_subplot(projection='3d')
+
+        axes.set_xlabel("X axis")
+        axes.set_ylabel("Y axis")
+        axes.set_zlabel("Z axis")
+
+        # Plot buoys and vertical 'ropes'
+        for buoy in self.buoys:
+            axes.scatter(buoy[0], buoy[1], buoy[2], c='b', linewidths=5)
+            axes.plot([buoy[0], buoy[0]],
+                      [buoy[1], buoy[1]],
+                      [buoy[2], buoy[2] - 10], c='g')
+
+        # plot base_link gt pose3s
+        for i_base, pose3 in enumerate(self.base_pose3s):
+            # gtsam_plot.plot_pose3_on_axes(axes, pose3, axis_length=base_scale)
+            if i_base in plot_base or len(plot_base) == 0:
+                gtsam_plot.plot_pose3_on_axes(axes, pose3, axis_length=base_scale)
+
+        # plot camera gt pose3s
+        if other_name is not None:
+            other_pose3s = self.cameras_pose3s[other_name]
+            for i_other, pose3 in enumerate(other_pose3s):
+                # gtsam_plot.plot_pose3_on_axes(axes, pose3, axis_length=other_scale)
+                if i_other in plot_other or len(plot_other) == 0:
+                    gtsam_plot.plot_pose3_on_axes(axes, pose3, axis_length=other_scale)
+                    # plot fov
+                    for i_ray, ray in enumerate(self.fov_rays[other_name]):
+                        point_end = pose3.transformFrom(5 * ray)
+                        x_comp = [pose3.x(), point_end[0]]
+                        y_comp = [pose3.y(), point_end[1]]
+                        z_comp = [pose3.z(), point_end[2]]
+                        # Plot (0,0) as magenta
+                        if i_ray == 0:
+                            axes.plot(x_comp, y_comp, z_comp, c='m')
+                        # Plot center line as yellow
+                        elif i_ray == 4:
+                            axes.plot(x_comp, y_comp, z_comp, c='b')
+                        # Other fov lines plotted as black
+                        else:
+                            axes.plot(x_comp, y_comp, z_comp, c='k')
+
+                    # plot intersection
+                    for plane in self.planes:
+                        # Find the center ray in the camera frame and then find the world coord given pose
+                        start, direction = self.camera_center_point_direction(camera_name=other_name, pose=pose3)
+
+                        intrcpt_status, intrcpt_w_coords, _, in_bounds = plane.find_intersection(start,
+                                                                                                 direction)
+
+                        if in_bounds:
+                            axes.scatter(intrcpt_w_coords[0], intrcpt_w_coords[1], intrcpt_w_coords[2], c='r')
+
+        # plt.axis('equal')
+        plt.title("Testing the transform")
+        plt.show()
+
+    def mark_centers(self, camera_names=None):
+        """
+        Marks the centers of images. Used for debugging
+        :param camera_names: list of camera names(strings) that are to be marked
+        :return:
+        """
+
+        # Clear old data and or make folder for the new data
+        centers_path_name = self.path_name + 'centers/'
+        overwrite_directory(centers_path_name)
+
+        # Specify Which cameras to process
+        if camera_names is None:
+            camera_names = self.cameras.keys()
+
+        for pose in self.base_poses:
+            img_id = int(pose[-1])
+
+            for camera_name in camera_names:
+                img = cv2.imread(self.path_name + camera_name + f"/{img_id}.jpg")
+
+                # Check that image was able to be loaded
+                if not isinstance(img, np.ndarray):
+                    continue
+
+                center_x = self.cameras[camera_name].cx
+                center_y = self.cameras[camera_name].cy
+
+                img[:, int(center_x), :] = (0, 255, 255)
+                img[int(center_y), :, :] = (0, 255, 255)
+
+                cv2.imwrite(centers_path_name + f"{camera_name}_{img_id}.jpg", img)
 
     def plot_3d_map(self, show_base=False):
         # Parameters
@@ -1259,6 +1285,7 @@ class image_mapping:
         mlab.title("Visual Map")
         mlab.show()
 
+    # ===== Registration quality metrics =====
     def quantify_registration(self, method='ccorr', min_overlap_threshold=0.05, verbose_output=False):
         """
         Simple method of quantify the registration between images associated with planes of the.
@@ -1266,6 +1293,11 @@ class image_mapping:
         If there is a size mismatch or insufficient overlap, min_overlap_threshold, no comparison is performed
         :return:
         """
+        # Clear old data and or make folder for the new data
+        quality_path_name = self.path_name + 'quality/'
+        overwrite_directory(quality_path_name)
+
+        # TODO Add custom ssim
         if method == "ccorr":
             similarity_method = cv2.TM_CCORR_NORMED
         elif method == "ccoeff":
@@ -1331,7 +1363,7 @@ class image_mapping:
                     similarity_result = cv2.matchTemplate(base_img_overlap, comp_img_overlap, similarity_method)[0][0]
 
                     if verbose_output:
-                        cv2.imwrite(f"{path_name}quality/" +
+                        cv2.imwrite(quality_path_name +
                                     f"plane_{plane_id}_quality_{similarity_result:.3f}_{base_id}_{comp_id}.jpg",
                                     np.hstack((base_img_overlap, comp_img_overlap)))
 
@@ -1374,7 +1406,9 @@ class image_mapping:
 
 class sss_mapping:
     """
+    Mapping with the side scan sonar, sss. Currently very rough.
 
+    Still need to extract the range of the rope and then map that, using an assumed depth.
     """
 
     def __init__(self, sss_base_gt, sss_base_est, sss_data_path, buoys, ropes, rows):
@@ -1471,7 +1505,7 @@ class sss_mapping:
             pose3s = self.sss_est_Pose3s['sensor']
 
         for pose3 in pose3s:
-            mlab.points3d(pose3.x(), pose3.y(), pose3.z(),  color=(1, 1, 1), scale_factor=0.1)
+            mlab.points3d(pose3.x(), pose3.y(), pose3.z(), color=(1, 1, 1), scale_factor=0.1)
 
     def draw_phony_sss_data(self, range=2.5, use_gt=True):
         # Select which positions to plot: gt or est
@@ -1481,8 +1515,8 @@ class sss_mapping:
             pose3s = self.sss_est_Pose3s['sensor']
 
         # define sonars to display [angle_start(rads), angle_end(rads), color(rgb tuple)]
-        sonars = [[3/2 * np.pi, 2 * np.pi, (1, 0, 0)],  # port
-                  [np.pi, 3/2 * np.pi, (0, 1, 0)]]  # starboard
+        sonars = [[3 / 2 * np.pi, 2 * np.pi, (1, 0, 0)],  # port
+                  [np.pi, 3 / 2 * np.pi, (0, 1, 0)]]  # starboard
         for pose3 in pose3s:
             center = [pose3.x(), pose3.y(), pose3.z()]
             radius = range
@@ -1521,250 +1555,3 @@ class sss_mapping:
             print("Currently plotting phony stuff")
 
         mlab.show()
-
-
-# %% Load and process data
-paths = {"mac": "/Users/julian/KTH/Degree project/sam_slam/processing scripts/data/online_testing/",
-         "linux": "/home/julian/catkin_ws/src/sam_slam/processing scripts/data/online_testing/"}
-
-for path in paths.values():
-    if os.path.isdir(path):
-        path_name = path
-        break
-    else:
-        path_name = ''
-
-if len(path_name) == 0:
-    print("path_name was not assigned")
-
-# === Camera data ===
-gt_base = read_csv_to_array(path_name + 'camera_gt.csv')
-base = read_csv_to_array(path_name + 'camera_gt.csv')  # change to camera_gt.csv, camera_dr.csv, or camera_est.csv
-
-left_info = read_csv_to_list(path_name + 'left_info.csv')
-right_info = read_csv_to_list(path_name + 'right_info.csv')
-down_info = read_csv_to_list(path_name + 'down_info.csv')
-
-# === SSS data ===
-sss_base_gt = read_csv_to_array(path_name + 'sss_gt.csv')
-sss_base_est = read_csv_to_array(path_name + 'sss_est.csv')
-sss_path = path_name + "sss/"
-
-# === Map information ===
-# Select buoy position to use
-# buoys.csv contains the ground truth locations of the buoys
-# camera_buoys_est.csv contains the estimated locations of the buoys
-buoy_info = read_csv_to_array(path_name + 'buoys.csv')
-# buoy_info = read_csv_to_array(path_name + 'buoys_est.csv')
-
-# Define structure of the farm
-# Define the connections between buoys
-# list of start and stop indices of buoys
-# TODO hard coded rope structure
-ropes = [[0, 4], [4, 2],
-         [1, 5], [5, 3]]
-
-# Define which connections above form a row
-# Note: each rope section forms two planes for example [0, 4] and [4, 0], so that both sides can be imaged separately
-# TODO hard coded rows
-rows = [[0, 2], [3, 1], [4, 6], [7, 5]]
-
-img_map = image_mapping(gt_base_link_poses=gt_base,
-                        base_link_poses=base,
-                        l_r_camera_info=[left_info, right_info, down_info],
-                        buoy_info=buoy_info,
-                        ropes=ropes,
-                        rows=rows)
-
-sss_map = sss_mapping(sss_base_gt=sss_base_gt,
-                      sss_base_est=sss_base_est,
-                      sss_data_path=sss_path,
-                      buoys=buoy_info,
-                      ropes=ropes,
-                      rows=rows)
-
-# %% sonar plotting
-sss_map.generate_3d_plot(farm=True,
-                         sss_pos=True,
-                         sss_data=True)
-
-# %%Plot base and camera poses
-# img_map.plot_fancy(other_name=None)
-# img_map.plot_fancy(other_name="left")
-# img_map.plot_fancy(other_name="down")
-# img_map.plot_fancy(img_map.gt_camera_pose3s)  # plot the ground ruth as other
-# plot_fancy(base_gt_pose3s, left_gt_pose3s, buoy_info, points)
-
-# %% Perform processing on images
-img_map.process_images(path_name, ignore_first=8, verbose=True)  #
-# img_map.process_ground_plane_images(path_name, ignore_first=8, verbose=True)  # ground plane processing incomplete
-img_map.simple_stitch_planes_images(max_dist=12)
-img_map.combine_row_images()
-
-# %% Produce 3d map
-# img_map.plot_3d_map(show_base=True)
-img_map.plot_3d_map_mayavi()
-
-# %% Quantify quality of registration
-img_map.quantify_registration(method="other",  # "ccorr"
-                              min_overlap_threshold=0.05,
-                              verbose_output=True)
-img_map.report_registration_quality()
-
-# %% Testing parameters
-do_testing_1 = False
-do_testing_2 = False
-do_testing_3 = False
-do_testing_4 = False
-# %% Testing 1
-if do_testing_1:
-    print("Testing 1")
-    camera_name = "left"
-    p_org = np.array([-5.0, 4.0, -0])
-    p_x = np.array([-5.0, 9.0, -0])
-    p_y = np.array([-5.0, 4.0, -15])
-
-    point = np.array([-4.0, 3.0, -6])
-    direction = np.array([-1.0, 0, 0])
-
-    a, b, c, d = img_map.planes[0].find_intersection(point, direction)
-
-    corner_coords = img_map.find_fov_corner_coords(camera_name=camera_name, plane_id=0, pose_id=25)
-
-    corner_pixels, offset, max_inds = img_map.convert_spatial_corners_to_pixel(0, corner_coords)
-
-    M = cv2.getPerspectiveTransform(img_map.cameras[camera_name].orig_img_corners.astype(np.float32),
-                                    corner_pixels.astype(np.float32))
-
-    img_id = int(img_map.base_pose[25, -1])
-
-    img = cv2.imread(f"/Users/julian/KTH/Degree project/sam_slam/processing scripts/data/left/l_{img_id}.jpg")
-
-    new_img = cv2.warpPerspective(img, M, (max_inds[0] + 1, max_inds[1] + 1))
-
-    # cv2.imshow('thing', new_img)
-
-    # cv2.imwrite('new_img.jpg', new_img)
-
-    # truncate warped image
-    x_original = corner_pixels[0] + offset
-
-    x_start = abs(offset[0]) + 76
-    x_size = int((img_map.planes[0].mag_x * img_map.spatial_2_pixel) // 1)
-    x_end = x_start + x_size
-
-    y_start = abs(offset[1])
-    y_size = int((img_map.planes[0].mag_y * img_map.spatial_2_pixel) // 1)
-    y_end = y_start + y_size
-
-    new_img = new_img[y_start:y_end, x_start:x_end]
-
-    cv2.imwrite('new_img.jpg', new_img)
-
-# %% Testing 2
-if do_testing_2:
-    print("Testing 2")
-    camera_name = "left"
-    pose_id = 25
-    proper_img_id = int(img_map.base_pose[pose_id, -1])
-    test_next_n = 3
-
-    # buoys
-    test_point_b0 = np.array([-5.0, 4.0, 0])
-    test_point_b1 = np.array([-5.0, 9.0, 0])
-
-    x_pix_0, y_pix_0 = img_map.find_pixels_of_3d_point(camera_name=camera_name,
-                                                       pose_id=pose_id,
-                                                       map_point=test_point_b0)
-
-    x_pix_1, y_pix_1 = img_map.find_pixels_of_3d_point(camera_name=camera_name,
-                                                       pose_id=pose_id,
-                                                       map_point=test_point_b1)
-
-    # Lower points
-    depth = 7.5
-    test_point_b0_deep = test_point_b0
-    test_point_b0_deep[2] = -depth
-
-    test_point_b1_deep = test_point_b1
-    test_point_b1_deep[2] = -depth
-
-    x_pix_0_d, y_pix_0_d = img_map.find_pixels_of_3d_point(camera_name=camera_name,
-                                                           pose_id=pose_id,
-                                                           map_point=test_point_b0_deep)
-    x_pix_1_d, y_pix_1_d = img_map.find_pixels_of_3d_point(camera_name=camera_name,
-                                                           pose_id=pose_id,
-                                                           map_point=test_point_b1_deep)
-
-    # Center
-    # test_point_c = np.array([-5.0, 6.592, -0.706])
-    # x_pix_c, y_pix_c = img_map.find_pixels_of_3d_point(pose_id, test_point_c)
-
-    # Mark images
-    for i in range(int(test_next_n + 1)):
-        img_id = proper_img_id + i
-        img = cv2.imread(f"/Users/julian/KTH/Degree project/sam_slam/processing scripts/data/left/l_{img_id}.jpg")
-
-        # Buoys
-        img_marked = cv2.circle(img, (int(x_pix_0 // 1), int(y_pix_0 // 1)), 5, (0, 0, 255), -1)
-        img_marked = cv2.circle(img_marked, (int(x_pix_1 // 1), int(y_pix_1 // 1)), 5, (0, 0, 255), -1)
-
-        # Lower points
-        img_marked = cv2.circle(img, (int(x_pix_0_d // 1), int(y_pix_0_d // 1)), 5, (255, 0, 255), -1)
-        img_marked = cv2.circle(img_marked, (int(x_pix_1_d // 1), int(y_pix_1_d // 1)), 5, (255, 0, 255), -1)
-
-        # Center
-        # img_marked = cv2.circle(img_marked, (int(x_pix_c // 1), int(y_pix_c // 1)), 5, (0, 255, 255), -1)
-
-        img_marked[:, int(img_map.cameras[camera_name].cx), :] = (0, 255, 255)
-        img_marked[int(img_map.cameras[camera_name].cy), :, :] = (0, 255, 255)
-
-        #
-        cv2.imshow(f"Marked Image: {img_id}", img_marked)
-        cv2.imwrite(f"Test2:{proper_img_id}_{img_id}.jpg", img_marked)
-
-    # Waits for a keystroke
-    cv2.waitKey(0)
-
-    # Destroys all the windows created
-    cv2.destroyAllWindows()
-
-# %% Testing 3 - checking rotation transforms and equivalences
-if do_testing_3:
-    """
-    Testing for the transform between base_link and left camera
-    """
-    pose_id = 25
-    base_pose3 = img_map.base_pose3s[pose_id]
-    # Ros transform using quaternions reported by ros
-    # stnfish using rpy in stonefish config -> quaternion w/ rpy_2_quat.py
-    ros_b_2_c = img_map.return_left_relative_pose()
-    stnfsh_b_2_c = img_map.return_left_relative_pose()
-
-    ros_left_pose3 = base_pose3.transformPoseFrom(ros_b_2_c)
-    stnfsh_left_pose3 = base_pose3.transformPoseFrom(stnfsh_b_2_c)
-
-    # Convert matrix to rpy w/ gtsam
-    ros_check = ros_b_2_c.rotation().rpy()
-    stnfsh_check = stnfsh_b_2_c.rotation().rpy()
-
-# %% Testing 4 - mark images with centers
-if do_testing_4:
-    camera_names = ["left", "right"]
-    for pose in img_map.base_pose:
-        img_id = int(pose[-1])
-
-        for camera_name in camera_names:
-            img = cv2.imread(path_name + camera_name + f"/{img_id}.jpg")
-
-            # Check that image was able to be loaded
-            if not isinstance(img, np.ndarray):
-                continue
-
-            center_x = img_map.cameras[camera_name].cx
-            center_y = img_map.cameras[camera_name].cy
-
-            img[:, int(center_x), :] = (0, 255, 255)
-            img[int(center_y), :, :] = (0, 255, 255)
-
-            cv2.imwrite(path_name + f"centers/centers_{img_id}.jpg", img)

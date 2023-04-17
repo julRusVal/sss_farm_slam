@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import os
+import shutil
 import math
 import numpy as np
 import gtsam
@@ -9,6 +11,13 @@ import csv
 
 
 # ===== General stuff =====
+def overwrite_directory(directory_path):
+    if os.path.isdir(directory_path):
+        shutil.rmtree(directory_path)
+        os.makedirs(directory_path)
+    else:
+        os.makedirs(directory_path)
+
 def read_csv_to_array(file_path):
     """
     Reads a CSV file and returns the contents as a 2D Numpy array.
@@ -82,6 +91,7 @@ def calc_pose_error(array_test: np.ndarray, array_true: np.ndarray):
 
 
 # ===== GTSAM Stuff =====
+# === Pose2 ===
 def create_Pose2(input_pose):
     """
     Create a GTSAM Pose3 from the recorded poses in the form:
@@ -92,6 +102,15 @@ def create_Pose2(input_pose):
     # GTSAM Pose2: x, y, theta
     return gtsam.Pose2(input_pose[0], input_pose[1], rot3_yaw)
 
+def pose2_list_to_nparray(pose_list):
+    out_array = np.zeros((len(pose_list), 3))
+
+    for i, pose2 in enumerate(pose_list):
+        out_array[i, :] = pose2.x(), pose2.y(), pose2.theta()
+
+    return out_array
+
+# === Pose3 ====
 def create_Pose3(input_pose):
     """
     Create a GTSAM Pose3 from the recorded poses in the form:
@@ -99,6 +118,33 @@ def create_Pose3(input_pose):
     """
     rot3 = gtsam.Rot3.Quaternion(input_pose[3], input_pose[4], input_pose[5], input_pose[6])
     return gtsam.Pose3(r=rot3, t=np.array((input_pose[0], input_pose[1], input_pose[2]), dtype=np.float64))
+
+
+def convert_poses_to_Pose3(poses):
+    """
+    Poses is is of the form: [[x,y,z,q_w,q_x,q_,y,q_z]]
+    """
+    pose3s = []
+    for pose in poses:
+        pose3s.append(create_Pose3(pose))
+
+    return pose3s
+
+
+def apply_transformPoseFrom(pose3s, transform):
+    """
+    pose3s: [gtsam.Pose3]
+    transform: gtsam.Pose3
+
+    Apply the transform given in local coordinates, result is expressed in the world coords
+    """
+    transformed_pose3s = []
+    for pose3 in pose3s:
+        transformed_pose3 = pose3.transformPoseFrom(transform)
+        transformed_pose3s.append(transformed_pose3)
+
+    return transformed_pose3s
+
 
 def merge_into_Pose3(input_pose2, input_rpd):
     """
@@ -119,13 +165,8 @@ def merge_into_Pose3(input_pose2, input_rpd):
 
     return gtsam.Pose3(r=rot3, t=trans)
 
-def pose2_list_to_nparray(pose_list):
-    out_array = np.zeros((len(pose_list), 3))
 
-    for i, pose2 in enumerate(pose_list):
-        out_array[i, :] = pose2.x(), pose2.y(), pose2.theta()
 
-    return out_array
 
 
 def show_simple_graph_2d(graph, x_keys, b_keys, values, label):
@@ -181,6 +222,24 @@ def show_simple_graph_2d(graph, x_keys, b_keys, values, label):
     nx.draw_networkx(G, pos, edge_color=e_colors, node_color=n_colors, **options)
     np.arange(plot_limits[0], plot_limits[1] + 1, 2.5)
     plt.show()
+
+
+# ===== 3d geometry utilities =====
+def projectPixelTo3dRay(u, v, cx, cy, fx, fy):
+    """
+    From ROS-perception
+    https://github.com/ros-perception/vision_opencv/blob/rolling/image_geometry/image_geometry/cameramodels.py
+    Returns the unit vector which passes from the camera center to through rectified pixel (u, v),
+    using the camera :math:`P` matrix.
+    This is the inverse of :math:`project3dToPixel`.
+    """
+    x = (u - cx) / fx
+    y = (v - cy) / fy
+    norm = math.sqrt(x * x + y * y + 1)
+    x /= norm
+    y /= norm
+    z = 1.0 / norm
+    return x, y, z
 
 
 def get_quaternion_from_euler(roll, pitch, yaw):
