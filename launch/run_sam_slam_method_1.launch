@@ -5,7 +5,7 @@
     <!-- Node parameters -->
     <param name="robot_name" value="$(arg robot_name)"/>
     <param name="frame" value="map"/>
-    <param name="path_name" value="/home/julian/catkin_ws/src/sam_slam/processing scripts/data/real_testing"/>
+    <param name="path_name" value="/home/julian/catkin_ws/src/sam_slam/processing scripts/data/real_testing_new"/>
 
     <!-- Data parameters -->
     <param name="dr_update_time" value="2.0"/>
