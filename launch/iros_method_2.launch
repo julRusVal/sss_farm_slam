@@ -1,12 +1,13 @@
 <?xml version="1.0"?>
-<!-- Launch file for Method 1, point landmark per rope detection, for ICRA-->
+<!-- Launch file for Method 2, point landmark per rope detection, for IROS-->
+<!-- Source: run_sam_slam_real_rope.launch -->
 <launch>
     <arg name="robot_name" default="sam"/>
     
     <!-- Node parameters -->
     <param name="robot_name" value="$(arg robot_name)"/>
     <param name="frame" value="map"/>
-    <param name="path_name" value="/home/julian/catkin_ws/src/sam_slam/processing scripts/data/real_testing_rope"/>
+    <param name="path_name" value="/home/julian/catkin_ws/src/sam_slam/processing scripts/data/iros_method_2"/>
 
     <!-- Data parameters -->
     <param name="dr_update_time" value="2.0"/>
