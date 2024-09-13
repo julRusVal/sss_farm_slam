@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 
+
+
 # = Colors =
 dr_color = 'r'
 proposed_color = 'b'
@@ -29,35 +31,45 @@ show_rmse = True
 
 # = Data to include =
 """
-Check that the data provided matches the newest nomenclature. We have changed what the methods are reffered to as
+Check that the data provided matches the newest nomenclature. We have changed what the methods are referred to as
 is the different revisions... 
 
 Proposed: real_testing_rope <-- IROS method 2
 baseline 1 (buoy only): real_testing_no_rope <-- IROS method 3
 baseline 2 (buoy and single rope prior per rope): real_testing_new <-- IROS method 1
 
-This script uses the IROS data but uses the nameing convention of the ICRA 2024 paper
+This script can use either the oler IROS data or the newer ICRA 2024 data.
+The  naming convention of the ICRA 2024 paper is used
 (see above)
 """
 
+use_icra_2024 = True
+
 script_directory = os.path.dirname(os.path.abspath(__file__))
 
-# Baseline 1
-base_1_path = script_directory + "/data/iros_method_3"
+if use_icra_2024:
+    base_1_path = script_directory + "/data/icra_2024_baseline_1"
+    base_2_path = script_directory + "/data/icra_2024_baseline_2"
+    proposed_path = script_directory + "/data/icra_2024_proposed"
+else:
+    base_1_path = script_directory + "/data/iros_method_3"
+    base_2_path = script_directory + "/data/iros_method_1"
+    proposed_path = script_directory + "/data/iros_method_2"
+
+# Load required from each method
+## Baseline 1
 base_1_error = np.genfromtxt(base_1_path + "/dr_online_error.csv",
                                delimiter=',', dtype=float)
 base_1_detections = np.genfromtxt(base_1_path + '/detections_graph.csv',
                                     delimiter=',', dtype=float)
 
-# Baseline 2
-base_2_path = script_directory + "/data/iros_method_1"
+## Baseline 2
 base_2_error = np.genfromtxt(base_2_path + "/dr_online_error.csv",
                                delimiter=',', dtype=float)
 base_2_detections = np.genfromtxt(base_2_path + '/detections_graph.csv',
                                     delimiter=',', dtype=float)
 
-# Proposed
-proposed_path = script_directory + "/data/iros_method_2"
+## Proposed
 proposed_error = np.genfromtxt(proposed_path + "/dr_online_error.csv",
                                delimiter=',', dtype=float)
 proposed_detections = np.genfromtxt(proposed_path + '/detections_graph.csv',
@@ -124,8 +136,12 @@ plt.xlabel(x_axis_label, fontsize=label_size)
 plt.ylabel(y_axis_label, fontsize=label_size)
 plt.grid(True)
 plt.tight_layout()
+plt.margins(x=0)
 
-file_path = "/home/julian/catkin_ws/src/sam_slam/processing scripts/data/icra_2024"
+if use_icra_2024:
+    file_path = script_directory + "/data/icra_2024_results"
+else:
+    file_path = script_directory + "/data/iros_results"
 plt.savefig(file_path + "/online_error.png", dpi=300)
 
 plt.show()
