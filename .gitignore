@@ -49,6 +49,36 @@ qtcreator-*
 
 # Catkin custom files
 CATKIN_IGNORE
-/processing scripts/data/online_testing/
-/processing scripts/data/sim_testing/ranges/
-/.idea/
+
+# Data directories - move to external storage
+/processing scripts/data/
+/processing scripts/sea_thru_data/
+/processing scripts/ate_plots/
+
+# Data files
+*.bag
+*.csv
+*.jpg
+*.jpeg
+*.png
+*.tiff
+*.mp4
+*.avi
+*.bin
+*.dat
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+.directory
