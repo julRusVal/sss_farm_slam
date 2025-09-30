@@ -58,6 +58,12 @@ CATKIN_IGNORE
 # Data files
 *.bag
 *.csv
+# Allow assets for documentation
+!assets/*.jpg
+!assets/*.jpeg
+!assets/*.png
+!assets/*.gif
+!assets/*.svg
 *.jpg
 *.jpeg
 *.png

@@ -6,6 +6,17 @@ A ROS package for Simultaneous Localization and Mapping (SLAM) using Side-Scan S
 
 This project implements a SLAM system specifically designed for underwater algae farm mapping using side-scan sonar data. The system combines odometry data with sonar detections to build maps of underwater environments while simultaneously tracking the vehicle's position.
 
+## Demonstration
+
+### Real-time SLAM Operation
+<!-- Add your demo GIF here: ![SLAM Demo](assets/slam_demo.gif) -->
+*To add a demo: Create a GIF showing your SLAM system in action and place it in the `assets/` folder*
+
+### Sample Results
+<!-- Add result images here when available -->
+<!-- ![Trajectory Results](assets/trajectory_result.png) -->
+<!-- ![Map Output](assets/map_result.png) -->
+
 ## Features
 
 - **Side-Scan Sonar Processing**: Real-time processing of SSS data for landmark detection
