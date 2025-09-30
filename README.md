@@ -9,8 +9,10 @@ This project implements a SLAM system specifically designed for underwater algae
 ## Demonstration
 
 ### Real-time SLAM Operation
-<!-- Add your demo GIF here: ![SLAM Demo](assets/slam_demo.gif) -->
-*To add a demo: Create a GIF showing your SLAM system in action and place it in the `assets/` folder*
+
+![SLAM Demo](assets/slam_demo.gif)
+
+*Real-time underwater SLAM demonstration showing vehicle trajectory estimation and landmark detection in an algae farm environment*
 
 ### Sample Results
 <!-- Add result images here when available -->
