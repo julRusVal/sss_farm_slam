@@ -7,7 +7,7 @@
         <param name="robot_name" value="$(arg robot_name)"/>
         <param name="frame" value="map"/>
         <param name="simulated_data" value="True"/>
-        <param name="path_name" value="/home/julian/catkin_ws/src/sam_slam/processing scripts/data/online_testing"/>
+        <param name="path_name" value="$(find sam_slam)/processing scripts/data/online_testing"/>
 
         <!-- Data parameters -->
         <param name="dr_update_time" value="2.0"/>

@@ -1,7 +1,8 @@
 <?xml version="1.0"?>
 <launch>
+  <arg name="bag_file" default="/home/julian/sam_real_algae.bag"/>
   <!-- Play the ROS bag -->
-  <node name="rosbag_player" pkg="rosbag" type="play" args="-r 2 --clock /home/julian/sam_real_algae.bag" />
+  <node name="rosbag_player" pkg="rosbag" type="play" args="-r 2 --clock $(arg bag_file)" />
 
   <!-- gps and buoy node -->
   <node name="gps_buoy_node" pkg="sam_dead_reckoning" type="algae_map_markers.py" output="screen" />

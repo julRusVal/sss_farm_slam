@@ -1,12 +1,13 @@
 <?xml version="1.0"?>
 <launch>
     <arg name="robot_name" default="sam"/>
+    <arg name="bag_file" default="/home/julian/sam_simulated_run.bag"/>
     
     <!-- Node parameters -->
     <param name="robot_name" value="$(arg robot_name)"/>
     <param name="frame" value="map"/>
 
-    <param name="path_name" value="/home/julian/catkin_ws/src/sam_slam/processing scripts/data/sim_testing"/>
+    <param name="path_name" value="$(find sam_slam)/processing scripts/data/sim_testing"/>
 
     <!-- Data parameters -->
     <param name="dr_update_time" value="2.0"/>
@@ -56,7 +57,7 @@
     <node name="sam_slam_listener" pkg="sam_slam" type="sam_listener_online_slam_node.py" output="screen"/>
 
     <!-- Play the ROS bag -->
-    <node name="rosbag_player" pkg="rosbag" type="play" args="-r 0.5 --clock /home/julian/sam_sim_1_edited.bag"/>
+    <node name="rosbag_player" pkg="rosbag" type="play" args="-r 0.5 --clock $(arg bag_file)"/>
 
     <node name="sim_sss_object_detection" pkg="sss_object_detection" type="sim_sss_detection_publisher.py">
         <param name="robot_name" value="$(arg robot_name)"/>
