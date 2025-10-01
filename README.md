@@ -2,6 +2,8 @@
 
 A ROS package for Simultaneous Localization and Mapping (SLAM) using Side-Scan Sonar (SSS) in algae farm environments.
 
+**Paper**: [Side Scan Sonar-based SLAM for Autonomous Algae Farm Monitoring](https://arxiv.org/abs/2509.26121)
+
 ## Overview
 
 This project implements a SLAM system specifically designed for underwater algae farm mapping using side-scan sonar data. The system combines odometry data with sonar detections to build maps of underwater environments while simultaneously tracking the vehicle's position.
@@ -256,6 +258,13 @@ This project is licensed under the BSD License - see the LICENSE file for detail
 
 ## Acknowledgments
 
+### Research Collaborators
+- **Dr. John Folkesson** - KTH Royal Institute of Technology (Supervisor)
+- **Dr. Ignacio Torroba** - KTH Royal Institute of Technology (Advisor)
+
+### Industry Support
+- **Ocean Infinity** - PhD student funding and industry partnership
+
+### Technical Acknowledgments
 - Georgia Tech for the GTSAM library
 - ROS community for the robotics framework
-- Research collaborators and advisors

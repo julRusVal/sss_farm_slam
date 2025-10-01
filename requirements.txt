@@ -1,0 +1,17 @@
+# Python dependencies for SSS Farm SLAM
+# Install with: pip install -r requirements.txt
+
+numpy>=1.18.0
+matplotlib>=3.3.0
+opencv-python>=4.0.0
+scikit-image>=0.17.0
+pillow>=7.0.0
+requests>=2.25.0
+
+# GTSAM - install separately as it may require compilation
+# pip install gtsam
+# or build from source for better performance
+
+# Optional dependencies for enhanced functionality
+mayavi>=4.7.0  # for 3D visualization
+pandas>=1.1.0  # for data analysis
